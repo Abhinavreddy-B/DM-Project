@@ -1,42 +1,51 @@
+from flask import Flask, render_template, request
 import geopandas as gpd
 import folium
+import os
+
+app = Flask(__name__)
 
 # Load State Boundaries
 state_boundaries = gpd.read_file("boundaries/India_State_Boundary_New.shp")
 
-print(state_boundaries)
 # Load Stations Data
-stations = gpd.read_file("stations_cleaned.shp")  # Filtered stations file
+stations = gpd.read_file("stations_cleaned.shp")
 
-# Get State Name from User
-state_name = input("Enter the state name: ").strip()
+@app.route('/')
+def index():
+    states = sorted(state_boundaries["State_Name"].unique())
+    return render_template('index.html', states=states)
 
-# Filter State Boundary
-state_boundary = state_boundaries[state_boundaries["State_Name"].str.lower() == state_name.lower()]
+@app.route('/map')
+def generate_map():
+    state_name = request.args.get("state")
+    if not state_name:
+        return "No state selected", 400
 
-if state_boundary.empty:
-    print(f"State '{state_name}' not found in boundaries.")
-    exit()
+    state_boundary = state_boundaries[state_boundaries["State_Name"].str.lower() == state_name.lower()]
+    if state_boundary.empty:
+        return f"State '{state_name}' not found.", 404
 
-# Filter Stations in the Selected State (Spatial Join)
-stations_in_state = stations.sjoin(state_boundary, predicate="within")
+    # Filter Stations in the Selected State
+    stations_in_state = stations.sjoin(state_boundary, predicate="within")
 
-# Create Map Centered on State
-state_center = state_boundary.geometry.centroid.iloc[0]
-m = folium.Map(location=[state_center.y, state_center.x], zoom_start=7)
+    # Create Map
+    state_center = state_boundary.geometry.centroid.iloc[0]
+    m = folium.Map(location=[state_center.y, state_center.x], zoom_start=7)
+    folium.GeoJson(state_boundary, name=f"{state_name} Boundary").add_to(m)
 
-# Add State Boundary to Map
-folium.GeoJson(state_boundary, name=f"{state_name} Boundary").add_to(m)
+    for _, row in stations_in_state.iterrows():
+        folium.Marker(
+            location=[row.geometry.y, row.geometry.x],
+            popup=f"Station: {row['stn_lbl']}",
+            icon=folium.Icon(color="blue", icon="cloud"),
+        ).add_to(m)
+    
+    # Save Map
+    map_file = f"static/{state_name}_stations_map.html"
+    m.save(map_file)
+    return render_template('map.html', state=state_name, map_file=map_file)
 
-# Add Station Markers
-for _, row in stations_in_state.iterrows():
-    folium.Marker(
-        location=[row.geometry.y, row.geometry.x],
-        popup=f"Station: {row['stn_lbl']}",
-        icon=folium.Icon(color="blue", icon="cloud"),
-    ).add_to(m)
-
-# Save and Show Map
-map_file = f"{state_name}_stations_map.html"
-m.save(map_file)
-print(f"Map saved as '{map_file}'. Open this file in a browser.")
+if __name__ == '__main__':
+    os.makedirs("static", exist_ok=True)
+    app.run(debug=True)

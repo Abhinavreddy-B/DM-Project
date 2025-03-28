@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive State Map</title>
+    <script>
+        function loadMap() {
+            const state = document.getElementById("stateSelect").value;
+            if (state) {
+                document.getElementById("mapFrame").src = "/map?state=" + encodeURIComponent(state);
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <h1>Select a State</h1>
+    <select id="stateSelect" onchange="loadMap()">
+        <option value="">-- Select a State --</option>
+        {% for state in states %}
+        <option value="{{ state }}">{{ state }}</option>
+        {% endfor %}
+    </select>
+
+    <h2>State Map</h2>
+    <iframe id="mapFrame" src="" width="800" height="600" style="border: none;"></iframe>
+</body>
+
+</html>
