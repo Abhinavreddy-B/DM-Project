@@ -4,9 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ state }} Map</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        async function fetchTimeSeries(stationId) {
+            const response = await fetch(`/timeseries?station_id=${stationId}`);
+            const data = await response.json();
+
+            if (data.error) {
+                alert("Error: " + data.error);
+                return;
+            }
+
+            const labels = data.data.map(d => d.timestamp);
+            const values = data.data.map(d => d.value);
+
+            const ctx = document.getElementById("timeSeriesChart").getContext("2d");
+            if (window.myChart) {
+                window.myChart.destroy();
+            }
+            window.myChart = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: `Time Series for ${stationId}`,
+                        data: values,
+                        borderColor: "blue",
+                        fill: false
+                    }]
+                }
+            });
+        }
+    </script>
 </head>
 <body>
-    <h1>{{ state }} - Weather Stations</h1>
     <iframe src="{{ map_file }}" width="100%" height="600px" style="border: none;"></iframe>
+    <!-- <canvas id="timeSeriesChart" width="400" height="200"></canvas> -->
 </body>
 </html>

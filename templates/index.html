@@ -9,7 +9,12 @@
         function loadMap() {
             const state = document.getElementById("stateSelect").value;
             if (state) {
-                document.getElementById("mapFrame").src = "/map?state=" + encodeURIComponent(state);
+                fetch(`/map?state=${encodeURIComponent(state)}`)
+                    .then(response => response.text()) // Assuming backend returns an SVG or HTML snippet
+                    .then(mapHtml => {
+                        document.getElementById("mapContainer").innerHTML = mapHtml;
+                    })
+                    .catch(error => console.error('Error loading map:', error));
             }
         }
     </script>
@@ -25,7 +30,9 @@
     </select>
 
     <h2>State Map</h2>
-    <iframe id="mapFrame" src="" width="800" height="600" style="border: none;"></iframe>
+    <div id="mapContainer">
+        <p>Select a state to load the map.</p>
+    </div>
 </body>
 
 </html>
