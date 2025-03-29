@@ -6,6 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive State Map</title>
     <script>
+
+async function fetchTimeSeries(stationId) {
+            const response = await fetch(`/timeseries?station_id=${stationId}`);
+            const data = await response.json();
+
+            if (data.error) {
+                alert("Error: " + data.error);
+                return;
+            }
+
+            alert('For station ' + stationId)
+        }
         function loadMap() {
             const state = document.getElementById("stateSelect").value;
             if (state) {
@@ -17,6 +29,25 @@
                     .catch(error => console.error('Error loading map:', error));
             }
         }
+        // window.addEventListener("message", (event) => {
+        //     // if (event.origin !== "https://hubspot-app.com") return
+        //     console.log("Message from HubSpot app:", event.data)
+        //     // Handle the data received from the iframe
+        // })
+        window.addEventListener("message", (event) => {
+            const iframeElement = document.querySelector('#map-iframe');
+            if (!iframeElement || iframeElement.contentWindow !== event.source) return;
+            console.log('Inside this event listener', event.source, event.source === iframeElement.contentWindow);
+            try {
+                console.log('Got data', event.data);
+                const data = event.data
+                if (data.station) {
+                    fetchTimeSeries(data.station);
+                }
+            } catch (e) {
+                console.error("Invalid message received", e);
+            }
+        });
     </script>
 </head>
 

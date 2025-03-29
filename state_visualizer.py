@@ -36,11 +36,21 @@ def generate_map():
     folium.GeoJson(state_boundary, name=f"{state_name} Boundary").add_to(m)
 
     for _, row in stations_in_state.iterrows():
-        station_id = row['stn_lbl']
+        station_label = row['stn_lbl']
+        station_id = row['stn_val']
         lat, lon = row.geometry.y, row.geometry.x
+
+        # JavaScript inside the popup to send a message to the parent window
+        popup_html = f"""
+        <b>{station_label}</b><br>
+        <button onclick="window.parent.postMessage({repr({'station': station_id})}, '*')">
+            Show Time Series
+        </button>
+        """
+        print(popup_html)
         folium.Marker(
             location=[lat, lon],
-            popup=f"<b>{station_id}</b><br><button onclick='fetchTimeSeries(\"{station_id}\")'>Show Time Series</button>",
+            popup=popup_html,
             icon=folium.Icon(color="blue", icon="cloud"),
         ).add_to(m)
 
