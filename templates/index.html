@@ -5,9 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive State Map</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-
-async function fetchTimeSeries(stationId) {
+        async function fetchTimeSeries(stationId) {
             const response = await fetch(`/timeseries?station_id=${stationId}`);
             const data = await response.json();
 
@@ -16,7 +18,51 @@ async function fetchTimeSeries(stationId) {
                 return;
             }
 
-            alert('For station ' + stationId)
+            const labels = data.data.map(item => item.timestamp);
+            const values = data.data.map(item => item.value);
+
+            const ctx = document.getElementById("aqiChart").getContext("2d");
+
+            if (window.aqiChart instanceof Chart) {
+                window.aqiChart.destroy();
+            }
+
+            window.aqiChart = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: "AQI Value",
+                        data: values,
+                        borderColor: "blue",
+                        borderWidth: 2,
+                        fill: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: { display: true, text: "Date" },
+                            ticks: { autoSkip: true, maxTicksLimit: 20 } // Prevents overcrowding
+                        },
+                        y: { title: { display: true, text: "AQI" } }
+                    },
+                    plugins: {
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: "x", // Pan horizontally
+                            },
+                            zoom: {
+                                wheel: { enabled: true }, // Zoom with mouse wheel
+                                pinch: { enabled: true }, // Zoom with pinch on touch devices
+                                mode: "x", // Zoom only on x-axis
+                            }
+                        }
+                    }
+                }
+            });
         }
         function loadMap() {
             const state = document.getElementById("stateSelect").value;
@@ -52,17 +98,51 @@ async function fetchTimeSeries(stationId) {
 </head>
 
 <body>
-    <h1>Select a State</h1>
-    <select id="stateSelect" onchange="loadMap()">
-        <option value="">-- Select a State --</option>
-        {% for state in states %}
-        <option value="{{ state }}">{{ state }}</option>
-        {% endfor %}
-    </select>
+    <div class="h-screen w-screen flex flex-row bg-gray-100 p-4">
+        <!-- Left Section -->
+        <div class="flex-1 h-full flex flex-col p-4 bg-white rounded-xl shadow-md">
+            <!-- State Selection -->
+            <div class="mb-6">
+                <h1 class="text-2xl font-semibold text-gray-800 mb-2">Select a State</h1>
+                <select id="stateSelect" onchange="loadMap()"
+                    class="w-full p-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400">
+                    <option value="">-- Select a State --</option>
+                    {% for state in states %}
+                    <option value="{{ state }}">{{ state }}</option>
+                    {% endfor %}
+                </select>
+            </div>
 
-    <h2>State Map</h2>
-    <div id="mapContainer">
-        <p>Select a state to load the map.</p>
+            <!-- Map Container -->
+            <div id="mapContainer" class="flex-1 bg-gray-200 flex items-center justify-center rounded-lg shadow-inner">
+                <p class="text-gray-600">Select a state to load the map.</p>
+            </div>
+        </div>
+
+        <!-- Separator -->
+        <div class="w-1 bg-gray-300 mx-4"></div>
+
+        <!-- Right Section (AQI Charts) -->
+        <div class="flex-1 h-full bg-white p-4 rounded-xl shadow-md flex flex-col">
+            <h1 class="text-2xl font-semibold text-gray-800 mb-4">AQI Trend</h1>
+
+            <!-- Placeholder for AQI Chart -->
+            <div id="chartPlaceholder" class="flex-1 pb-4 flex items-center justify-center text-gray-600 text-lg">
+                <!-- Select a station to see time series -->
+                <canvas id="aqiChart"></canvas>
+            </div>
+
+            <!-- Separator -->
+            <div class="w-full h-1 bg-gray-300 my-2"></div>
+
+            <!-- Placeholder for another graph -->
+            <div class="flex-1">
+                <h1 class="text-2xl font-semibold text-gray-800 mb-4">Other Graph</h1>
+                <div class="w-full h-4/5 bg-gray-200 rounded-lg shadow-inner flex items-center justify-center">
+                    <p class="text-gray-600">Placeholder for another graph</p>
+                </div>
+            </div>
+        </div>
     </div>
 </body>
 
