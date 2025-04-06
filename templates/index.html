@@ -1,149 +1,257 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Interactive State Map</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        async function fetchTimeSeries(stationId) {
-            const response = await fetch(`/timeseries?station_id=${stationId}`);
-            const data = await response.json();
+      let selectedStation = null;
 
-            if (data.error) {
-                alert("Error: " + data.error);
-                return;
-            }
+      async function fetchTimeSeries(stationId) {
+        selectedStation = stationId;
+        const response = await fetch(`/timeseries?station_id=${stationId}`);
+        const data = await response.json();
 
-            const labels = data.data.map(item => item.timestamp);
-            const values = data.data.map(item => item.value);
+        if (data.error) {
+          alert("Error: " + data.error);
+          return;
+        }
 
-            const ctx = document.getElementById("aqiChart").getContext("2d");
+        const labels = data.data.map((item) => item.timestamp);
+        const values = data.data.map((item) => item.value);
 
-            if (window.aqiChart instanceof Chart) {
-                window.aqiChart.destroy();
-            }
+        const ctx = document.getElementById("aqiChart").getContext("2d");
 
-            window.aqiChart = new Chart(ctx, {
-                type: "line",
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: "AQI Value",
-                        data: values,
-                        borderColor: "blue",
-                        borderWidth: 2,
-                        fill: false,
-                    }]
+        if (window.aqiChart instanceof Chart) {
+          window.aqiChart.destroy();
+        }
+
+        window.aqiChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: "AQI Value",
+                data: values,
+                borderColor: "blue",
+                borderWidth: 2,
+                fill: false,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            scales: {
+              x: {
+                title: { display: true, text: "Date" },
+                ticks: { autoSkip: true, maxTicksLimit: 20 },
+              },
+              y: { title: { display: true, text: "AQI" } },
+            },
+            plugins: {
+              zoom: {
+                pan: { enabled: true, mode: "x" },
+                zoom: {
+                  wheel: { enabled: true },
+                  pinch: { enabled: true },
+                  mode: "x",
                 },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: {
-                            title: { display: true, text: "Date" },
-                            ticks: { autoSkip: true, maxTicksLimit: 20 } // Prevents overcrowding
-                        },
-                        y: { title: { display: true, text: "AQI" } }
-                    },
-                    plugins: {
-                        zoom: {
-                            pan: {
-                                enabled: true,
-                                mode: "x", // Pan horizontally
-                            },
-                            zoom: {
-                                wheel: { enabled: true }, // Zoom with mouse wheel
-                                pinch: { enabled: true }, // Zoom with pinch on touch devices
-                                mode: "x", // Zoom only on x-axis
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        function loadMap() {
-            const state = document.getElementById("stateSelect").value;
-            if (state) {
-                fetch(`/map?state=${encodeURIComponent(state)}`)
-                    .then(response => response.text()) // Assuming backend returns an SVG or HTML snippet
-                    .then(mapHtml => {
-                        document.getElementById("mapContainer").innerHTML = mapHtml;
-                    })
-                    .catch(error => console.error('Error loading map:', error));
-            }
-        }
-        // window.addEventListener("message", (event) => {
-        //     // if (event.origin !== "https://hubspot-app.com") return
-        //     console.log("Message from HubSpot app:", event.data)
-        //     // Handle the data received from the iframe
-        // })
-        window.addEventListener("message", (event) => {
-            const iframeElement = document.querySelector('#map-iframe');
-            if (!iframeElement || iframeElement.contentWindow !== event.source) return;
-            console.log('Inside this event listener', event.source, event.source === iframeElement.contentWindow);
-            try {
-                console.log('Got data', event.data);
-                const data = event.data
-                if (data.station) {
-                    fetchTimeSeries(data.station);
-                }
-            } catch (e) {
-                console.error("Invalid message received", e);
-            }
+              },
+            },
+          },
         });
+      }
+
+      async function fetchPredictions(stationId, model = "arima") {
+        if (!stationId) return;
+
+        document.getElementById("loadingSpinner").classList.remove("hidden");
+
+        try {
+          const response = await fetch(`/predict?station_id=${stationId}&model=${model}`);
+          const data = await response.json();
+
+          if (data.error) {
+            alert("Error: " + data.error);
+            return;
+          }
+
+          const labels = data.predictions.map((item) => item.timestamp);
+          const values = data.predictions.map((item) => item.predicted_aqi);
+
+          const ctx = document.getElementById("predictedAqiChart").getContext("2d");
+
+          if (window.predictedAqiChart instanceof Chart) {
+            window.predictedAqiChart.destroy();
+          }
+
+          window.predictedAqiChart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: `Predicted AQI (${model.toUpperCase()})`,
+                  data: values,
+                  borderColor: model === "lstm" ? "orange" : "purple",
+                  borderWidth: 2,
+                  fill: false,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              scales: {
+                x: {
+                  title: { display: true, text: "Date" },
+                  ticks: { autoSkip: true, maxTicksLimit: 10 },
+                },
+                y: { title: { display: true, text: "Predicted AQI" } },
+              },
+              plugins: {
+                zoom: {
+                  pan: { enabled: true, mode: "x" },
+                  zoom: {
+                    wheel: { enabled: true },
+                    pinch: { enabled: true },
+                    mode: "x",
+                  },
+                },
+              },
+            },
+          });
+        } catch (e) {
+          console.error("Prediction fetch failed:", e);
+          alert("Failed to load predictions.");
+        } finally {
+          document.getElementById("loadingSpinner").classList.add("hidden");
+        }
+      }
+
+      function updatePredictedChart() {
+        const selectedModel = document.getElementById("modelSelect").value;
+        if (selectedStation) {
+          fetchPredictions(selectedStation, selectedModel);
+        }
+      }
+
+      function loadMap() {
+        const state = document.getElementById("stateSelect").value;
+        if (state) {
+          fetch(`/map?state=${encodeURIComponent(state)}`)
+            .then((response) => response.text())
+            .then((mapHtml) => {
+              document.getElementById("mapContainer").innerHTML = mapHtml;
+            })
+            .catch((error) => console.error("Error loading map:", error));
+        }
+      }
+
+      window.addEventListener("message", (event) => {
+        const iframeElement = document.querySelector("#map-iframe");
+        if (!iframeElement || iframeElement.contentWindow !== event.source)
+          return;
+
+        try {
+          const data = event.data;
+          if (data.station) {
+            selectedStation = data.station;
+            if (data.action === "timeseries") {
+              fetchTimeSeries(data.station);
+            } else {
+              updatePredictedChart();
+            }
+          }
+        } catch (e) {
+          console.error("Invalid message received", e);
+        }
+      });
     </script>
-</head>
+  </head>
 
-<body>
+  <body>
     <div class="h-screen w-screen flex flex-row bg-gray-100 p-4">
-        <!-- Left Section -->
-        <div class="flex-1 h-full flex flex-col p-4 bg-white rounded-xl shadow-md">
-            <!-- State Selection -->
-            <div class="mb-6">
-                <h1 class="text-2xl font-semibold text-gray-800 mb-2">Select a State</h1>
-                <select id="stateSelect" onchange="loadMap()"
-                    class="w-full p-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400">
-                    <option value="">-- Select a State --</option>
-                    {% for state in states %}
-                    <option value="{{ state }}">{{ state }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <!-- Map Container -->
-            <div id="mapContainer" class="flex-1 bg-gray-200 flex items-center justify-center rounded-lg shadow-inner">
-                <p class="text-gray-600">Select a state to load the map.</p>
-            </div>
+      <!-- Left Section -->
+      <div class="flex-1 h-full flex flex-col p-4 bg-white rounded-xl shadow-md">
+        <div class="mb-6">
+          <h1 class="text-2xl font-semibold text-gray-800 mb-2">
+            Select a State
+          </h1>
+          <select
+            id="stateSelect"
+            onchange="loadMap()"
+            class="w-full p-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400"
+          >
+            <option value="">-- Select a State --</option>
+            {% for state in states %}
+            <option value="{{ state }}">{{ state }}</option>
+            {% endfor %}
+          </select>
         </div>
 
-        <!-- Separator -->
-        <div class="w-1 bg-gray-300 mx-4"></div>
-
-        <!-- Right Section (AQI Charts) -->
-        <div class="flex-1 h-full bg-white p-4 rounded-xl shadow-md flex flex-col">
-            <h1 class="text-2xl font-semibold text-gray-800 mb-4">AQI Trend</h1>
-
-            <!-- Placeholder for AQI Chart -->
-            <div id="chartPlaceholder" class="flex-1 pb-4 flex items-center justify-center text-gray-600 text-lg">
-                <!-- Select a station to see time series -->
-                <canvas id="aqiChart"></canvas>
-            </div>
-
-            <!-- Separator -->
-            <div class="w-full h-1 bg-gray-300 my-2"></div>
-
-            <!-- Placeholder for another graph -->
-            <div class="flex-1">
-                <h1 class="text-2xl font-semibold text-gray-800 mb-4">Other Graph</h1>
-                <div class="w-full h-4/5 bg-gray-200 rounded-lg shadow-inner flex items-center justify-center">
-                    <p class="text-gray-600">Placeholder for another graph</p>
-                </div>
-            </div>
+        <div
+          id="mapContainer"
+          class="flex-1 bg-gray-200 flex items-center justify-center rounded-lg shadow-inner"
+        >
+          <p class="text-gray-600">Select a state to load the map.</p>
         </div>
+      </div>
+
+      <div class="w-1 bg-gray-300 mx-4"></div>
+
+      <!-- Right Section -->
+      <div class="flex-1 h-full bg-white p-4 rounded-xl shadow-md flex flex-col overflow-auto">
+        <!-- AQI Chart -->
+        <div class="h-1/2">
+          <h1 class="text-2xl font-semibold text-gray-800 mb-4">AQI Trend</h1>
+          <div
+            id="chartPlaceholder"
+            class="p-4 bg-white rounded-lg shadow-md max-h-[300px] flex items-center justify-center"
+          >
+            <canvas id="aqiChart"></canvas>
+          </div>
+        </div>
+
+        <div class="w-full h-1 bg-gray-300 my-2"></div>
+
+        <!-- Prediction Section -->
+        <div class="h-1/2">
+          <h1 class="text-2xl font-semibold text-gray-800 mb-4">
+            Predicted AQI Trend
+          </h1>
+          <select
+            id="modelSelect"
+            onchange="updatePredictedChart()"
+            class="p-2 mb-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400"
+          >
+            <option value="arima" selected>ARIMA</option>
+            <option value="lstm">LSTM</option>
+          </select>
+
+          <div
+            id="predictedChartPlaceholder"
+            class="relative p-4 bg-white rounded-lg shadow-md max-h-[300px] flex items-center justify-center"
+          >
+            <!-- Spinner -->
+            <div
+              id="loadingSpinner"
+              class="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center z-10 hidden"
+            >
+              <svg class="animate-spin h-10 w-10 text-blue-500" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                <path class="opacity-75" fill="currentColor"
+                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            </div>
+
+            <canvas id="predictedAqiChart"></canvas>
+          </div>
+        </div>
+      </div>
     </div>
-</body>
-
+  </body>
 </html>

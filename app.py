@@ -11,6 +11,16 @@ import io
 import base64
 import numpy as np
 from scipy.interpolate import griddata
+from prophet import Prophet
+from statsmodels.tsa.arima.model import ARIMA
+# import tensorflow as tf
+# from tensorflow.keras.models import Sequential
+# from tensorflow.keras.layers import LSTM, Dense
+from sklearn.preprocessing import MinMaxScaler
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+
 
 app = Flask(__name__)
 
@@ -95,8 +105,11 @@ def generate_map():
         
         popup_html = f"""
         <b>{station_label}</b><br>
-        <button onclick="window.parent.postMessage({repr({'station': station_id})}, '*')">
+        <button onclick="window.parent.postMessage({repr({'station': station_id, 'action': 'timeseries'})}, '*')">
             Show Time Series
+        </button>
+        <button onclick="window.parent.postMessage({repr({'station': station_id, 'action': 'predict'})}, '*')">
+            Predict AQI
         </button>
         """
         folium.Marker(
@@ -150,6 +163,150 @@ def get_timeseries():
         return jsonify({"error": "No data found for the given station ID"}), 404
     
     return jsonify({"station_id": station_id, "data": time_series_data})
+
+
+def predict_aqi_arima(station_id, periods=6):
+    data = load_aqi_data(station_id)  # Load daily data
+
+    if isinstance(data, list):
+        df = pd.DataFrame(data)
+    else:
+        df = data
+
+    if 'timestamp' not in df.columns or 'value' not in df.columns:
+        return {'error': 'Invalid data format, missing "timestamp" or "value" column'}
+
+    df['ds'] = pd.to_datetime(df['timestamp'])
+    df.set_index('ds', inplace=True)
+
+    # Resample to monthly average
+    monthly_df = df['value'].resample('M').mean().dropna()
+
+    # if len(monthly_df) < 12:
+    #     return {'error': 'Not enough data to train a monthly model'}
+
+    model = ARIMA(monthly_df, order=(2, 1, 2))  # You can tune these params
+    model_fit = model.fit()
+
+    forecast = model_fit.forecast(steps=periods).tolist()
+
+    future_dates = pd.date_range(start=monthly_df.index[-1] + pd.offsets.MonthEnd(1),
+                                 periods=periods, freq='M')
+
+    predictions = [
+        {'timestamp': str(future_dates[i].date()), 'predicted_aqi': forecast[i]}
+        for i in range(periods)
+    ]
+    return {'station_id': station_id, 'predictions': predictions}
+
+
+class LSTMModel(nn.Module):
+    def __init__(self, input_size=1, hidden_size=50, num_layers=2):
+        super(LSTMModel, self).__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, 1)
+
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        out = self.fc(out[:, -1, :])  # Take output of the last time step
+        return out
+
+def predict_aqi_lstm(station_id, periods=6):
+    data = load_aqi_data(station_id)
+
+    if isinstance(data, list):
+        df = pd.DataFrame(data)
+    else:
+        df = data
+
+    if 'timestamp' not in df.columns or 'value' not in df.columns:
+        return {'error': 'Invalid data format, missing "timestamp" or "value" column'}
+
+    df['ds'] = pd.to_datetime(df['timestamp'])
+    df.set_index('ds', inplace=True)
+
+    # Resample to monthly averages
+    monthly_df = df['value'].resample('M').mean().dropna()
+
+    # if len(monthly_df) < 18:
+    #     return {'error': 'Not enough monthly data to train the model'}
+
+    # Normalize
+    scaler = MinMaxScaler()
+    scaled_values = scaler.fit_transform(monthly_df.values.reshape(-1, 1)).flatten()
+
+    sequence_length = 12  # Use last 12 months to predict next
+    X, y = [], []
+    for i in range(len(scaled_values) - sequence_length):
+        X.append(scaled_values[i:i+sequence_length])
+        y.append(scaled_values[i+sequence_length])
+    X, y = np.array(X), np.array(y)
+    X = np.expand_dims(X, axis=-1)
+
+    X_tensor = torch.tensor(X, dtype=torch.float32)
+    y_tensor = torch.tensor(y, dtype=torch.float32).view(-1, 1)
+
+    dataset = TensorDataset(X_tensor, y_tensor)
+    loader = DataLoader(dataset, batch_size=16, shuffle=True)
+
+    model = LSTMModel()
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+    # Train model
+    for epoch in range(50):
+        for xb, yb in loader:
+            out = model(xb)
+            loss = criterion(out, yb)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+    # Predict future
+    model.eval()
+    with torch.no_grad():
+        last_sequence = torch.tensor(scaled_values[-sequence_length:], dtype=torch.float32).view(1, sequence_length, 1)
+        predictions = []
+        for _ in range(periods):
+            pred_scaled = model(last_sequence).item()
+            pred_original = scaler.inverse_transform([[pred_scaled]])[0, 0]
+            predictions.append(pred_original)
+
+            last_sequence = torch.roll(last_sequence, -1, dims=1)
+            last_sequence[0, -1, 0] = pred_scaled
+
+    # Generate monthly future dates
+    last_date = monthly_df.index[-1] + pd.offsets.MonthEnd(1)
+    future_dates = pd.date_range(start=last_date, periods=periods, freq='M')
+
+    predictions = [{'timestamp': str(future_dates[i].date()), 'predicted_aqi': predictions[i]} for i in range(periods)]
+
+    return {'station_id': station_id, 'predictions': predictions}
+
+
+
+
+
+@app.route('/predict')
+def predict_aqi():
+    station_id = request.args.get('station_id')
+    model=request.args.get('model')
+    print(model,"saikiran")
+    periods = int(request.args.get('periods', 30))  # Default to 7 days
+    predictions=None
+    if(model=='arima'):
+        predictions = predict_aqi_arima(station_id, periods)
+    else:
+        predictions = predict_aqi_lstm(station_id, periods)
+        
+        
+
+    return jsonify({
+        'station_id': station_id,
+        'predictions': predictions['predictions'],
+    })
+
+
 
 if __name__ == '__main__':
     os.makedirs("static", exist_ok=True)
