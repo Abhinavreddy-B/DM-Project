@@ -8,6 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.4.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     let selectedStation = null;
@@ -54,6 +55,7 @@
           responsive: true,
           scales: {
             x: {
+              type: "time",
               title: { display: true, text: "Date" },
               ticks: { autoSkip: true, maxTicksLimit: 20 },
             },
@@ -63,15 +65,26 @@
             zoom: {
               pan: {
                 enabled: true,
-                mode: 'x',
-                limits: {
-                  x: { min: 'original', max: 'original' },
-                },
+                mode: 'xy',
               },
               zoom: {
                 wheel: { enabled: true },
                 pinch: { enabled: true },
                 mode: "x",
+              },
+              limits: {
+                x: { min: 'original', max: 'original' },
+              },
+            },
+            annotation: {
+              annotations: {
+                lockdownPeriod: {
+                  type: 'box',
+                  xMin: '2020-02-29',
+                  xMax: '2020-05-31',
+                  backgroundColor: 'rgba(255, 99, 132, 0.4)',
+                  borderWidth: 0,
+                },
               },
             },
           },
@@ -149,6 +162,7 @@
             responsive: true,
             scales: {
               x: {
+                type: "time",
                 title: { display: true, text: "Date" },
                 ticks: { autoSkip: true, maxTicksLimit: 10 },
               },
