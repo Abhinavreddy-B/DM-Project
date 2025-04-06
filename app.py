@@ -182,8 +182,8 @@ def predict_aqi_arima(station_id, periods=6):
     # Resample to monthly average
     monthly_df = df['value'].resample('M').mean().dropna()
 
-    # if len(monthly_df) < 12:
-    #     return {'error': 'Not enough data to train a monthly model'}
+    if len(monthly_df) < 13:
+        return {'error': 'Not enough data to train a monthly model'}
 
     model = ARIMA(monthly_df, order=(2, 1, 2))  # You can tune these params
     model_fit = model.fit()
@@ -228,8 +228,8 @@ def predict_aqi_lstm(station_id, periods=6):
     # Resample to monthly averages
     monthly_df = df['value'].resample('M').mean().dropna()
 
-    # if len(monthly_df) < 18:
-    #     return {'error': 'Not enough monthly data to train the model'}
+    if len(monthly_df) < 13:
+        return {'error': 'Not enough monthly data to train the model'}
 
     # Normalize
     scaler = MinMaxScaler()
@@ -300,6 +300,8 @@ def predict_aqi():
         predictions = predict_aqi_lstm(station_id, periods)
         
         
+    if 'error' in predictions:
+        return jsonify(predictions), 400
 
     return jsonify({
         'station_id': station_id,
