@@ -11,6 +11,13 @@ import io
 import base64
 import numpy as np
 from scipy.interpolate import griddata
+from prophet import Prophet
+from statsmodels.tsa.arima.model import ARIMA
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+from sklearn.preprocessing import MinMaxScaler
+
 
 app = Flask(__name__)
 
@@ -95,8 +102,11 @@ def generate_map():
         
         popup_html = f"""
         <b>{station_label}</b><br>
-        <button onclick="window.parent.postMessage({repr({'station': station_id})}, '*')">
+        <button onclick="window.parent.postMessage({repr({'station': station_id, 'action': 'timeseries'})}, '*')">
             Show Time Series
+        </button>
+        <button onclick="window.parent.postMessage({repr({'station': station_id, 'action': 'predict'})}, '*')">
+            Predict AQI
         </button>
         """
         folium.Marker(
@@ -150,6 +160,108 @@ def get_timeseries():
         return jsonify({"error": "No data found for the given station ID"}), 404
     
     return jsonify({"station_id": station_id, "data": time_series_data})
+
+
+def predict_aqi_arima(station_id, periods=7):
+    data = load_aqi_data(station_id)  
+
+    if isinstance(data, list):
+        df = pd.DataFrame(data)
+    else:
+        df = data
+
+    if 'timestamp' not in df.columns or 'value' not in df.columns:
+        return {'error': 'Invalid data format, missing "timestamp" or "value" column'}
+
+    df['ds'] = pd.to_datetime(df['timestamp'])
+    df.set_index('ds', inplace=True)
+
+    model = ARIMA(df['value'], order=(5,1,0))
+    model_fit = model.fit()
+
+    forecast = model_fit.forecast(steps=periods).tolist()  # Convert to list
+
+    future_dates = pd.date_range(start=df.index[-1], periods=periods+1, freq='D')[1:]
+
+    predictions = [{'timestamp': str(future_dates[i]), 'predicted_aqi': forecast[i]} for i in range(periods)]
+
+    return {'station_id': station_id, 'predictions': predictions}
+
+
+def predict_aqi_lstm(station_id, periods=7):
+    
+    data = load_aqi_data(station_id)
+
+    if isinstance(data, list):
+        df = pd.DataFrame(data)
+    else:
+        df = data
+
+    df['ds'] = pd.to_datetime(df['timestamp'])
+    df.set_index('ds', inplace=True)
+
+    scaler = MinMaxScaler()
+    df['scaled_value'] = scaler.fit_transform(df[['value']])
+
+
+    sequence_length = 30  # Use last 10 days to predict the futur
+    X, y = [], []
+    for i in range(len(df) - sequence_length):
+        X.append(df['scaled_value'].values[i:i+sequence_length])
+        y.append(df['scaled_value'].values[i+sequence_length])
+    X, y = np.array(X), np.array(y)
+    X = np.expand_dims(X, axis=-1)
+
+    # Define LSTM model
+    model = Sequential([
+        LSTM(50, activation='relu', return_sequences=True, input_shape=(sequence_length, 1)),
+        LSTM(50, activation='relu'),
+        Dense(1)
+    ])
+    model.compile(optimizer='adam', loss='mse')
+
+    # Train the model
+    model.fit(X, y, epochs=50, batch_size=16, verbose=0)
+
+    # Generate predictions
+    last_sequence = df['scaled_value'].values[-sequence_length:].reshape(1, sequence_length, 1)
+    predictions = []
+    for _ in range(periods):
+        pred_scaled = model.predict(last_sequence)[0, 0]
+        pred_original = scaler.inverse_transform([[pred_scaled]])[0, 0]
+        predictions.append(pred_original)
+        last_sequence = np.roll(last_sequence, -1, axis=1)
+        last_sequence[0, -1, 0] = pred_scaled 
+
+    
+    future_dates = pd.date_range(start=df.index[-1], periods=periods+1, freq='D')[1:]
+    predictions = [{'timestamp': str(future_dates[i]), 'predicted_aqi': predictions[i]} for i in range(periods)]
+
+    return {'station_id': station_id, 'predictions': predictions}
+
+
+
+
+@app.route('/predict')
+def predict_aqi():
+    station_id = request.args.get('station_id')
+    model=request.args.get('model')
+    print(model,"saikiran")
+    periods = int(request.args.get('periods', 10))  # Default to 7 days
+    predictions=None
+    if(model=='arima'):
+        predictions = predict_aqi_arima(station_id, periods)
+    else:
+        predictions = predict_aqi_lstm(station_id, periods)
+        
+        
+
+    return jsonify({
+        'station_id': station_id,
+        'predictions': predictions['predictions'],
+    })
+
+
 
 if __name__ == '__main__':
     os.makedirs("static", exist_ok=True)
