@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Interactive State Map</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     let selectedStation = null;
@@ -60,7 +60,13 @@
           },
           plugins: {
             zoom: {
-              pan: { enabled: true, mode: "x" },
+              pan: {
+                enabled: true,
+                mode: 'x',
+                limits: {
+                  x: { min: 'original', max: 'original' },
+                },
+              },
               zoom: {
                 wheel: { enabled: true },
                 pinch: { enabled: true },
@@ -96,8 +102,19 @@
           canvasParent.appendChild(newCanvas);
         }
 
-        const labels = data.predictions.map((item) => item.timestamp);
-        const values = data.predictions.map((item) => item.predicted_aqi);
+        const existingLabels = data.old_data.map((item) => item.timestamp);
+        const existingValues = data.old_data.map((item) => item.monthly_avg_aqi);
+
+        const predictionLabels = data.predictions.map((item) => item.timestamp);
+        const predictionValues = data.predictions.map((item) => item.predicted_aqi);
+
+        // Merge existing and predicted values into a single series
+        const labels = [...existingLabels, ...predictionLabels];
+
+        const paddedPredictions = new Array(existingValues.length - 1).fill(null);
+        paddedPredictions.push(existingValues[existingValues.length - 1]); // connect line
+        paddedPredictions.push(...predictionValues);
+
 
         const ctx = document.getElementById("predictedAqiChart").getContext("2d");
 
@@ -111,11 +128,19 @@
             labels: labels,
             datasets: [
               {
+                label: "Historical AQI",
+                data: [...existingValues, ...new Array(predictionValues.length).fill(null)],
+                borderColor: "gray",
+                borderWidth: 2,
+                fill: false,
+              },
+              {
                 label: `Predicted AQI (${model.toUpperCase()})`,
-                data: values,
+                data: paddedPredictions,
                 borderColor: model === "lstm" ? "orange" : "purple",
                 borderWidth: 2,
                 fill: false,
+                spanGaps: true,
               },
             ],
           },
@@ -126,15 +151,21 @@
                 title: { display: true, text: "Date" },
                 ticks: { autoSkip: true, maxTicksLimit: 10 },
               },
-              y: { title: { display: true, text: "Predicted AQI" } },
+              y: { title: { display: true, text: "AQI" } },
             },
             plugins: {
               zoom: {
-                pan: { enabled: true, mode: "x" },
+                pan: {
+                  enabled: true,
+                  mode: 'xy',
+                },
                 zoom: {
                   wheel: { enabled: true },
                   pinch: { enabled: true },
                   mode: "x",
+                },
+                limits: {
+                  x: { min: 'original', max: 'original' }, // optional
                 },
               },
             },
@@ -238,7 +269,8 @@
       </div>
 
       <div class="relative w-full h-full flex-1">
-        <div id="mapContainer" class="flex-1 bg-gray-200 flex items-center justify-center rounded-lg shadow-inner w-full h-full">
+        <div id="mapContainer"
+          class="flex-1 bg-gray-200 flex items-center justify-center rounded-lg shadow-inner w-full h-full">
           <p class="text-gray-600">Select a state to load the map.</p>
         </div>
 

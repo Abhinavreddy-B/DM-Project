@@ -244,7 +244,17 @@ def predict_aqi_arima(station_id, periods=6):
         {'timestamp': str(future_dates[i].date()), 'predicted_aqi': forecast[i]}
         for i in range(periods)
     ]
-    return {'station_id': station_id, 'predictions': predictions}
+
+    existing_datapoints = [
+        {'timestamp': str(date.date()), 'monthly_avg_aqi': value}
+        for date, value in monthly_df.items()
+    ]
+
+    return {
+        'station_id': station_id,
+        'predictions': predictions,
+        'existing_datapoints': existing_datapoints
+    }
 
 
 class LSTMModel(nn.Module):
@@ -328,11 +338,12 @@ def predict_aqi_lstm(station_id, periods=6):
 
     predictions = [{'timestamp': str(future_dates[i].date()), 'predicted_aqi': predictions[i]} for i in range(periods)]
 
-    return {'station_id': station_id, 'predictions': predictions}
+    existing_datapoints = [
+        {'timestamp': str(date.date()), 'monthly_avg_aqi': value}
+        for date, value in monthly_df.items()
+    ]
 
-
-
-
+    return {'station_id': station_id, 'predictions': predictions, 'existing_datapoints': existing_datapoints}
 
 @app.route('/predict')
 def predict_aqi():
@@ -353,8 +364,8 @@ def predict_aqi():
     return jsonify({
         'station_id': station_id,
         'predictions': predictions['predictions'],
+        'old_data': predictions['existing_datapoints']
     })
-
 
 
 if __name__ == '__main__':
