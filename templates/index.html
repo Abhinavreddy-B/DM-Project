@@ -11,6 +11,11 @@
   <script>
     let selectedStation = null;
 
+    function clearDate() {
+      document.getElementById("datePicker").value = "";
+      loadMap();
+    }
+
     async function fetchTimeSeries(stationId) {
       selectedStation = stationId;
       const response = await fetch(`/timeseries?station_id=${stationId}`);
@@ -153,13 +158,28 @@
 
     function loadMap() {
       const state = document.getElementById("stateSelect").value;
+      const date = document.getElementById("datePicker").value;
+      const spinner = document.getElementById("loadingSpinner_2");
+
       if (state) {
-        fetch(`/map?state=${encodeURIComponent(state)}`)
+        let url = `/map?state=${encodeURIComponent(state)}`;
+        if (date) {
+          url += `&date=${encodeURIComponent(date)}`;
+        }
+
+        spinner?.classList.remove("hidden"); // Show spinner
+
+        fetch(url)
           .then((response) => response.text())
           .then((mapHtml) => {
             document.getElementById("mapContainer").innerHTML = mapHtml;
           })
-          .catch((error) => console.error("Error loading map:", error));
+          .catch((error) => {
+            console.error("Error loading map:", error);
+          })
+          .finally(() => {
+            spinner?.classList.add("hidden"); // Hide spinner
+          });
       }
     }
 
@@ -189,33 +209,58 @@
   <div class="h-screen w-screen flex flex-row bg-gray-100 p-4">
     <!-- Left Section -->
     <div class="flex-1 h-full flex flex-col p-4 bg-white rounded-xl shadow-md">
-      <div class="mb-6">
-        <h1 class="text-2xl font-semibold text-gray-800 mb-2">
-          Select a State
-        </h1>
-        <select id="stateSelect" onchange="loadMap()"
-          class="w-full p-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400">
-          <option value="">-- Select a State --</option>
-          {% for state in states %}
-          <option value="{{ state }}">{{ state }}</option>
-          {% endfor %}
-        </select>
+      <div class="mb-6 flex gap-4">
+        <!-- State Selector -->
+        <div class="flex-1">
+          <h1 class="text-2xl font-semibold text-gray-800 mb-2">
+            Select a State
+          </h1>
+          <select id="stateSelect" onchange="loadMap()"
+            class="w-full p-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400">
+            <option value="">-- Select a State --</option>
+            {% for state in states %}
+            <option value="{{ state }}">{{ state }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Date Picker -->
+        <div class="flex-1">
+          <h1 class="text-2xl font-semibold text-gray-800 mb-2">
+            Select a Date
+          </h1>
+          <div class="flex gap-2 items-center">
+            <input type="date" id="datePicker" onchange="loadMap()" min="2016-01-01" max="2023-12-31"
+              class="w-full p-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400">
+            <button onclick="clearDate()" class="text-sm text-blue-600 underline">Clear</button>
+          </div>
+        </div>
       </div>
 
-      <div id="mapContainer" class="flex-1 bg-gray-200 flex items-center justify-center rounded-lg shadow-inner">
-        <p class="text-gray-600">Select a state to load the map.</p>
+      <div class="relative w-full h-full flex-1">
+        <div id="mapContainer" class="flex-1 bg-gray-200 flex items-center justify-center rounded-lg shadow-inner w-full h-full">
+          <p class="text-gray-600">Select a state to load the map.</p>
+        </div>
+
+        <!-- Spinner should be outside #mapContainer -->
+        <div id="loadingSpinner_2"
+          class="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center z-10 hidden w-full h-full">
+          <svg class="animate-spin h-10 w-10 text-blue-500" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+        </div>
       </div>
     </div>
 
     <div class="w-1 bg-gray-300 mx-4"></div>
 
     <!-- Right Section -->
-    <div class="flex-1 h-full bg-white p-4 rounded-xl shadow-md flex flex-col overflow-auto">
+    <div class="flex-1 h-full flex flex-col overflow-auto ">
       <!-- AQI Chart -->
-      <div class="h-1/2">
+      <div class="h-1/2 rounded-lg shadow-md bg-white p-4">
         <h1 class="text-2xl font-semibold text-gray-800 mb-4">AQI Trend</h1>
-        <div id="chartPlaceholder"
-          class="p-4 bg-white rounded-lg shadow-md max-h-[300px] flex items-center justify-center">
+        <div id="chartPlaceholder" class="max-h-[300px] flex items-center justify-center">
           <canvas id="aqiChart"></canvas>
         </div>
       </div>
@@ -223,18 +268,19 @@
       <div class="w-full h-1 bg-gray-300 my-2"></div>
 
       <!-- Prediction Section -->
-      <div class="h-1/2">
-        <h1 class="text-2xl font-semibold text-gray-800 mb-4">
-          Predicted AQI Trend
-        </h1>
-        <select id="modelSelect" onchange="updatePredictedChart()"
-          class="p-2 mb-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400">
-          <option value="arima" selected>ARIMA</option>
-          <option value="lstm">LSTM</option>
-        </select>
+      <div class="h-1/2 rounded-lg shadow-md bg-white p-4">
+        <div class="flex flex-row justify-between items-center">
+          <h1 class="text-2xl font-semibold text-gray-800 mb-4">
+            Predicted AQI Trend
+          </h1>
+          <select id="modelSelect" onchange="updatePredictedChart()"
+            class="p-2 mb-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400">
+            <option value="arima" selected>ARIMA</option>
+            <option value="lstm">LSTM</option>
+          </select>
+        </div>
 
-        <div
-          class="relative p-4 bg-white rounded-lg shadow-md max-h-[300px] flex items-center justify-center">
+        <div class="relative p-4 max-h-[300px] flex items-center justify-center">
           <!-- Spinner -->
           <div id="loadingSpinner"
             class="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center z-10 hidden">

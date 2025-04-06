@@ -42,60 +42,106 @@ def load_aqi_data_by_date(year, date):
     df = df[df['date'] == date]  # Filter for the given date
     return df
 
-def interpolate_aqi(stations, aqi_data):
-    """Perform spatial interpolation using IDW."""
+def interpolate_aqi(stations, aqi_data, state_boundary):
+    """
+    Interpolate AQI over a state's area using all stations.
+
+    Parameters:
+    - stations: DataFrame with columns ['stn_val', 'lat', 'long']
+    - aqi_data: DataFrame with columns ['station_id', 'aqi']
+    - state_boundary: GeoDataFrame with a single polygon geometry for the state
+
+    Returns:
+    - grid_x, grid_y: meshgrid arrays of lon/lat
+    - grid_z_masked: interpolated AQI values masked to the state
+    - mask: boolean array showing which points are inside the state
+    """
     
-    print(stations.head(10))
     # Merge AQI data with station locations
-    stations = stations.merge(aqi_data, left_on='stn_val', right_on='station_id', how='inner')
+    merged = stations.merge(aqi_data, left_on='stn_val', right_on='station_id', how='inner')
     
-    # Extract coordinates and AQI values
-    points = stations[['long', 'lat']].values
-    values = stations['aqi'].values
-    
-    # Generate grid points for interpolation
+    # Coordinates and AQI values from all stations
+    points = merged[['long', 'lat']].values
+    values = merged['aqi'].values
+
+    # Get the state's polygon geometry
+    state_geom = state_boundary.geometry.unary_union
+
+    # Create a grid over the state's bounding box
+    minx, miny, maxx, maxy = state_geom.bounds
     grid_x, grid_y = np.meshgrid(
-        np.linspace(points[:, 0].min(), points[:, 0].max(), 100),
-        np.linspace(points[:, 1].min(), points[:, 1].max(), 100)
+        np.linspace(minx, maxx, 100),
+        np.linspace(miny, maxy, 100)
     )
-    
-    # Perform interpolation
+
+    # Interpolate AQI over entire grid using all stations
     grid_z = griddata(points, values, (grid_x, grid_y), method='cubic')
-    
-    return grid_x, grid_y, grid_z
+
+    # Create a GeoDataFrame of grid points
+    grid_points_flat = pd.DataFrame({
+        'lon': grid_x.ravel(),
+        'lat': grid_y.ravel()
+    })
+    grid_points_gdf = gpd.GeoDataFrame(
+        grid_points_flat,
+        geometry=gpd.points_from_xy(grid_points_flat['lon'], grid_points_flat['lat']),
+        crs='EPSG:4326'
+    )
+
+    # Create mask of which points are inside the state polygon
+    inside_mask = grid_points_gdf.within(state_geom).values
+    mask = inside_mask.reshape(grid_x.shape)
+
+    # Mask the interpolated result
+    grid_z_masked = np.where(mask, grid_z, np.nan)
+
+    return grid_x, grid_y, grid_z_masked, mask
 
 @app.route('/map')
 def generate_map():
     state_name = request.args.get("state")
-    # date = request.args.get("date")  # YYYY-MM-DD
-    date = '2022-09-20'
-    if not state_name or not date:
-        return "State and date must be provided", 400
+    date = request.args.get("date", None)
+
+    if not state_name:
+        return "State must be provided", 400
     
-    year = date[:4]  # Extract year from date
-    date_formatted = date[8:10] + "_" + date[5:7]  # Convert YYYY-MM-DD -> DD_MM
-    
-    # Load AQI data
-    aqi_data = load_aqi_data_by_date(year, date_formatted)
-    print(aqi_data)
+        
+    # print(aqi_data)
     # Load state boundary and station metadata
     state_boundary = state_boundaries[state_boundaries["State_Name"].str.lower() == state_name.lower()]
+    
     if state_boundary.empty:
         return f"State '{state_name}' not found.", 404
     
     stations_in_state = stations.sjoin(state_boundary, predicate="within")
-    
-    # Interpolate AQI
-    grid_x, grid_y, grid_z = interpolate_aqi(stations_in_state, aqi_data)
-    
+            
     # Create Map
     state_center = state_boundary.geometry.centroid.iloc[0]
     m = folium.Map(location=[state_center.y, state_center.x], zoom_start=7)
     folium.GeoJson(state_boundary, name=f"{state_name} Boundary").add_to(m)
-    
-    # Add heatmap layer
-    heat_data = [[grid_y[i, j], grid_x[i, j], grid_z[i, j]] for i in range(100) for j in range(100) if not np.isnan(grid_z[i, j])]
-    HeatMap(heat_data, radius=15).add_to(m)
+
+    if date is not None:
+        year = date[:4]  # Extract year from date
+        date_formatted = date[8:10] + "_" + date[5:7]  # Convert YYYY-MM-DD -> DD_MM
+
+        aqi_data = load_aqi_data_by_date(year, date_formatted)
+        aqi_filtered_data = aqi_data[aqi_data["station_id"].isin(stations_in_state["stn_val"])]
+        no_of_available_data_points = len(aqi_filtered_data)
+        
+        if no_of_available_data_points < 3:
+            return f"Less than 3 data points available for {state_name} on {date}", 404
+        
+        # Interpolate AQI
+        grid_x, grid_y, grid_z_masked, mask = interpolate_aqi(stations, aqi_data, state_boundary)
+
+        # Add heatmap layer
+        heat_data = [
+            [grid_y[i, j], grid_x[i, j], grid_z_masked[i, j]]
+            for i in range(grid_x.shape[0])
+            for j in range(grid_x.shape[1])
+            if not np.isnan(grid_z_masked[i, j])
+        ]
+        HeatMap(heat_data, radius=15).add_to(m)
     
     # Add stations as markers
     for _, row in stations_in_state.iterrows():
