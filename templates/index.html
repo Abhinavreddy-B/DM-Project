@@ -7,6 +7,7 @@
   <title>Interactive State Map</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.4.0"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     let selectedStation = null;
@@ -165,7 +166,18 @@
                   mode: "x",
                 },
                 limits: {
-                  x: { min: 'original', max: 'original' }, // optional
+                  x: { min: 'original', max: 'original' },
+                },
+              },
+              annotation: {
+                annotations: {
+                  lockdownPeriod: {
+                    type: 'box',
+                    xMin: '2020-02-29',
+                    xMax: '2020-05-31',
+                    backgroundColor: 'rgba(255, 99, 132, 0.4)',
+                    borderWidth: 0,
+                  },
                 },
               },
             },
@@ -306,6 +318,7 @@
             class="p-2 mb-2 border border-gray-300 rounded-lg text-gray-700 shadow-sm focus:ring-2 focus:ring-blue-400">
             <option value="arima" selected>ARIMA</option>
             <option value="lstm">LSTM</option>
+            <option value="prophet">PROPHET</option>
           </select>
         </div>
 

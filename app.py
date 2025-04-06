@@ -254,6 +254,49 @@ def predict_aqi_arima(station_id, periods=6):
     }
 
 
+def predict_aqi_prophet(station_id, periods=6):
+    data = load_aqi_data(station_id)
+
+    if isinstance(data, list):
+        df = pd.DataFrame(data)
+    else:
+        df = data
+
+    if 'timestamp' not in df.columns or 'value' not in df.columns:
+        return {'error': 'Invalid data format, missing "timestamp" or "value" column'}
+
+    df['ds'] = pd.to_datetime(df['timestamp'])
+    df.set_index('ds', inplace=True)
+
+    # Resample to monthly averages
+    monthly_df = df['value'].resample('M').mean().dropna().reset_index()
+    monthly_df.columns = ['ds', 'y']
+
+    if len(monthly_df) < 13:
+        return {'error': 'Not enough data to train Prophet model'}
+
+    model = Prophet()
+    model.fit(monthly_df)
+
+    # Generate future months
+    future = model.make_future_dataframe(periods=periods, freq='M')
+    forecast = model.predict(future)
+
+    forecast_values = forecast[['ds', 'yhat']].tail(periods)
+
+    predictions = [
+        {'timestamp': str(row['ds'].date()), 'predicted_aqi': row['yhat']}
+        for _, row in forecast_values.iterrows()
+    ]
+    
+    existing_datapoints = [
+        {'timestamp': str(row['ds'].date()), 'monthly_avg_aqi': row['y']}
+        for _, row in monthly_df.iterrows()
+    ]
+
+    return {'station_id': station_id, 'predictions': predictions, 'existing_datapoints': existing_datapoints}
+
+
 class LSTMModel(nn.Module):
     def __init__(self, input_size=1, hidden_size=50, num_layers=2):
         super(LSTMModel, self).__init__()
@@ -346,13 +389,14 @@ def predict_aqi_lstm(station_id, periods=6):
 def predict_aqi():
     station_id = request.args.get('station_id')
     model=request.args.get('model')
-    print(model,"saikiran")
     periods = int(request.args.get('periods', 30))  # Default to 7 days
     predictions=None
     if(model=='arima'):
         predictions = predict_aqi_arima(station_id, periods)
-    else:
+    elif model == 'lstm':
         predictions = predict_aqi_lstm(station_id, periods)
+    else:
+        predictions = predict_aqi_prophet(station_id, periods)
         
         
     if 'error' in predictions:
