@@ -152,11 +152,8 @@ def generate_map():
         
         popup_html = f"""
         <b>{station_label}</b><br>
-        <button onclick="window.parent.postMessage({repr({'station': station_id, 'action': 'timeseries'})}, '*')">
-            Show Time Series
-        </button>
-        <button onclick="window.parent.postMessage({repr({'station': station_id, 'action': 'predict'})}, '*')">
-            Predict AQI
+        <button onclick="window.parent.postMessage({repr({'station': station_id, 'action': 'analyse'})}, '*')">
+            Analyse
         </button>
         """
         folium.Marker(

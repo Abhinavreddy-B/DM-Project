@@ -223,11 +223,8 @@
         const data = event.data;
         if (data.station) {
           selectedStation = data.station;
-          if (data.action === "timeseries") {
-            fetchTimeSeries(data.station);
-          } else {
-            updatePredictedChart();
-          }
+          fetchTimeSeries(data.station);
+          updatePredictedChart();
         }
       } catch (e) {
         console.error("Invalid message received", e);
