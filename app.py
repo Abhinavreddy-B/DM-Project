@@ -200,6 +200,42 @@ def predict_aqi_arima(station_id, periods=6):
     return {'station_id': station_id, 'predictions': predictions}
 
 
+def predict_aqi_prophet(station_id, periods=6):
+    data = load_aqi_data(station_id)
+
+    if isinstance(data, list):
+        df = pd.DataFrame(data)
+    else:
+        df = data
+
+    if 'timestamp' not in df.columns or 'value' not in df.columns:
+        return {'error': 'Invalid data format, missing "timestamp" or "value" column'}
+
+    df['ds'] = pd.to_datetime(df['timestamp'])
+    df['y'] = df['value']
+
+    # Resample to monthly averages
+    monthly_df = df.set_index('ds').resample('M').mean().reset_index()
+    if len(monthly_df) < 13:
+        return {'error': 'Not enough data to train Prophet model'}
+
+    model = Prophet()
+    model.fit(monthly_df)
+
+    # Generate future months
+    future = model.make_future_dataframe(periods=periods, freq='M')
+    forecast = model.predict(future)
+
+    forecast_values = forecast[['ds', 'yhat']].tail(periods)
+
+    predictions = [
+        {'timestamp': str(row['ds'].date()), 'predicted_aqi': row['yhat']}
+        for _, row in forecast_values.iterrows()
+    ]
+
+    return {'station_id': station_id, 'predictions': predictions}
+
+
 class LSTMModel(nn.Module):
     def __init__(self, input_size=1, hidden_size=50, num_layers=2):
         super(LSTMModel, self).__init__()
@@ -291,11 +327,12 @@ def predict_aqi_lstm(station_id, periods=6):
 def predict_aqi():
     station_id = request.args.get('station_id')
     model=request.args.get('model')
-    print(model,"saikiran")
     periods = int(request.args.get('periods', 30))  # Default to 7 days
     predictions=None
     if(model=='arima'):
         predictions = predict_aqi_arima(station_id, periods)
+    elif model == 'lstm':
+        predictions = predict_aqi_lstm(station_id, periods)
     else:
         predictions = predict_aqi_lstm(station_id, periods)
         
