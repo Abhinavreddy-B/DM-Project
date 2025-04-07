@@ -18,6 +18,99 @@
       loadMap();
     }
 
+    aqiBands = {
+      aqiGood: {
+        type: 'box',
+        yMin: 0,
+        yMax: 50,
+        backgroundColor: 'rgba(0, 228, 0, 0.5)',
+        borderWidth: 0,
+        label: {
+          enabled: true,
+          content: 'Good',
+          position: 'start',
+          backgroundColor: 'rgba(0, 0, 0, 1)',
+          color: 'white',
+          font: { size: 10 },
+        }
+      },
+      aqiModerate: {
+        type: 'box',
+        yMin: 51,
+        yMax: 100,
+        backgroundColor: 'rgba(255, 255, 0, 0.5)',
+        borderWidth: 0,
+        label: {
+          enabled: true,
+          content: 'Moderate',
+          position: 'start',
+          backgroundColor: 'rgba(0, 0, 0, 1)',
+          color: 'white',
+          font: { size: 10 },
+        }
+      },
+      aqiUnhealthySensitive: {
+        type: 'box',
+        yMin: 101,
+        yMax: 150,
+        backgroundColor: 'rgba(255, 126, 0, 0.5)',
+        borderWidth: 0,
+        label: {
+          enabled: true,
+          content: 'Unhealthy for Sensitive Groups',
+          position: 'start',
+          backgroundColor: 'rgba(0, 0, 0, 1)',
+          color: 'white',
+          font: { size: 10 },
+        }
+      },
+      aqiUnhealthy: {
+        type: 'box',
+        yMin: 151,
+        yMax: 200,
+        backgroundColor: 'rgba(255, 0, 0, 0.5)',
+        borderWidth: 0,
+        label: {
+          enabled: true,
+          content: 'Unhealthy',
+          position: 'start',
+          backgroundColor: 'rgba(0, 0, 0, 1)',
+          color: 'white',
+          font: { size: 10 },
+        }
+      },
+      aqiVeryUnhealthy: {
+        type: 'box',
+        yMin: 201,
+        yMax: 300,
+        backgroundColor: 'rgba(143, 63, 151, 0.5)',
+        borderWidth: 0,
+        label: {
+          enabled: true,
+          content: 'Very Unhealthy',
+          position: 'start',
+          backgroundColor: 'rgba(0, 0, 0, 1)',
+          color: 'white',
+          font: { size: 10 },
+        }
+      },
+      aqiHazardous: {
+        type: 'box',
+        yMin: 301,
+        yMax: 500,
+        backgroundColor: 'rgba(126, 0, 35, 0.5)',
+        borderWidth: 0,
+        label: {
+          enabled: true,
+          content: 'Hazardous',
+          position: 'start',
+          backgroundColor: 'rgba(0, 0, 0, 1)',
+          color: 'white',
+          font: { size: 10 },
+        }
+      }
+    }
+
     async function fetchTimeSeries(stationId) {
       selectedStation = stationId;
       const response = await fetch(`/timeseries?station_id=${stationId}`);
@@ -77,14 +170,16 @@
               },
             },
             annotation: {
+              drawTime: 'beforeDatasetsDraw',
               annotations: {
                 lockdownPeriod: {
                   type: 'box',
                   xMin: '2020-02-29',
                   xMax: '2020-05-31',
-                  backgroundColor: 'rgba(255, 99, 132, 0.4)',
+                  backgroundColor: 'rgba(255, 99, 132, 0.8)',
                   borderWidth: 0,
                 },
+                ...aqiBands
               },
             },
           },
@@ -144,7 +239,7 @@
               {
                 label: "Historical AQI",
                 data: [...existingValues, ...new Array(predictionValues.length).fill(null)],
-                borderColor: "gray",
+                borderColor: "blue",
                 borderWidth: 2,
                 fill: false,
               },
@@ -173,6 +268,7 @@
                 pan: {
                   enabled: true,
                   mode: 'xy',
+                  modifierKey: 'alt',
                 },
                 zoom: {
                   wheel: { enabled: true },
@@ -184,14 +280,16 @@
                 },
               },
               annotation: {
+                drawTime: 'beforeDatasetsDraw',
                 annotations: {
                   lockdownPeriod: {
                     type: 'box',
                     xMin: '2020-02-29',
                     xMax: '2020-05-31',
-                    backgroundColor: 'rgba(255, 99, 132, 0.4)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.8)',
                     borderWidth: 0,
                   },
+                  ...aqiBands
                 },
               },
             },
