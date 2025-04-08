@@ -137,12 +137,13 @@ def generate_map():
 
         # Add heatmap layer
         heat_data = [
-            [grid_y[i, j], grid_x[i, j], grid_z_masked[i, j]]
+            [grid_y[i, j], grid_x[i, j], grid_z_masked[i, j]/500]
             for i in range(grid_x.shape[0])
             for j in range(grid_x.shape[1])
             if not np.isnan(grid_z_masked[i, j])
         ]
-        HeatMap(heat_data, radius=15).add_to(m)
+
+        HeatMap(heat_data, radius=15, max_val=1.0).add_to(m)
     
     # Add stations as markers
     for _, row in stations_in_state.iterrows():
